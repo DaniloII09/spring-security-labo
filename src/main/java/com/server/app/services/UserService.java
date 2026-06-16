@@ -1,5 +1,11 @@
 package com.server.app.services;
 
+import com.server.app.dto.auth.LoginDto;
+import com.server.app.dto.auth.SignUpDto;
+import com.server.app.dto.auth.UpdatePasswordDto;
+import com.server.app.dto.auth.UpdateProfileDto;
+import com.server.app.exceptions.BadRequestException;
+import com.server.app.exceptions.UnauthorizedException;
 import lombok.AllArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -110,5 +116,103 @@ public class UserService {
         throw new ConfictException("El correo electrónico ya está en uso");
       }
     });
+  }
+
+  public User login(LoginDto dto) {
+    User user = userRepository.findUserByUsername(dto.getUsername())
+            .orElseThrow(() -> new UnauthorizedException("Credenciales inválidas"));
+
+    if (!passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
+      throw new UnauthorizedException("Credenciales inválidas");
+    }
+
+    if (user.isBlocked()) {
+      throw new UnauthorizedException("Tu cuenta ha sido bloqueada");
+    }
+
+    Role role = user.getRole();
+    if (role == null || !role.getActive()) {
+      throw new UnauthorizedException("El rol de tu cuenta no está activo");
+    }
+
+    return user;
+  }
+
+  public User signUp(SignUpDto dto) {
+    if (userRepository.findUserByUsername(dto.getUsername()).isPresent()) {
+      throw new BadRequestException("El username ya existe");
+    }
+
+    if (userRepository.findUserByEmail(dto.getEmail()).isPresent()) {
+      throw new BadRequestException("El email ya está registrado");
+    }
+
+    Role adminRole = roleRepository.findByName("ADMIN")
+            .orElseThrow(() -> new BadRequestException("Rol ADMIN no existe"));
+
+    if (!adminRole.getActive()) {
+      throw new UnauthorizedException("El rol ADMIN no está activo");
+    }
+
+    User user = User.builder()
+            .username(dto.getUsername())
+            .name(dto.getName())
+            .surname(dto.getSurname())
+            .email(dto.getEmail())
+            .password(dto.getPassword())
+            .role(adminRole)
+            .blocked(false)
+            .build();
+
+    return userRepository.save(user);
+  }
+
+  public User updateProfile(int userId, UpdateProfileDto dto) {
+    User user = findById(userId);
+
+    if (dto.getUsername() != null) {
+      if (userRepository.findUserByUsername(dto.getUsername()).isPresent()
+              && !user.getUsername().equals(dto.getUsername())) {
+        throw new BadRequestException("El username ya existe");
+      }
+      user.setUsername(dto.getUsername());
+    }
+
+    if (dto.getEmail() != null) {
+      if (userRepository.findUserByEmail(dto.getEmail()).isPresent()
+              && !user.getEmail().equals(dto.getEmail())) {
+        throw new BadRequestException("El email ya está registrado");
+      }
+      user.setEmail(dto.getEmail());
+    }
+
+    if (dto.getName() != null) {
+      user.setName(dto.getName());
+    }
+
+    if (dto.getSurname() != null) {
+      user.setSurname(dto.getSurname());
+    }
+
+    return userRepository.save(user);
+  }
+
+  public User updatePassword(int userId, UpdatePasswordDto dto) {
+    User user = findById(userId);
+
+    if (!passwordEncoder.matches(dto.getOldpassword(), user.getPassword())) {
+      throw new UnauthorizedException("La contraseña anterior es incorrecta");
+    }
+
+    if (!dto.getNewpassword().equals(dto.getConfirmpassword())) {
+      throw new BadRequestException("Las contraseñas nuevas no coinciden");
+    }
+
+    if (dto.getOldpassword().equals(dto.getNewpassword())) {
+      throw new BadRequestException("La nueva contraseña debe ser diferente a la anterior");
+    }
+
+    user.setPassword(dto.getNewpassword());
+    return userRepository.save(user);
   }
 }
