@@ -80,7 +80,7 @@ public class AbonoService {
 
         return abonoToAbonoResponse(abono);
     }
-    
+
     private BigDecimal calcularMora(BigDecimal montoCuota, LocalDate vencimiento, LocalDate fechaPago) {
         if (fechaPago == null || !fechaPago.isAfter(vencimiento)) {
             return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
